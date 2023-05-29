@@ -12,8 +12,9 @@ import re
 import vim
 from orgmode.liborgmode.base import MultiPurposeList, flatten_list, Direction, get_domobj_range
 from orgmode.liborgmode.orgdate import OrgTimeRange
-from orgmode.liborgmode.orgdate import get_orgdate
+from orgmode.liborgmode.orgdate import get_orgdate, _text2orgdate
 from orgmode.liborgmode.checkboxes import Checkbox, CheckboxList
+from orgmode.liborgmode.logbook import ClockLine, Logbook
 from orgmode.liborgmode.dom_obj import DomObj, DomObjList, REGEX_SUBTASK, REGEX_SUBTASK_PERCENT, REGEX_HEADING, REGEX_TAG, REGEX_TODO
 
 from orgmode.py3compat.xrange_compatibility import *
@@ -31,11 +32,11 @@ class Heading(DomObj):
 
     def __init__(self, level=1, title=u'', tags=None, todo=None, body=None, active_date=None):
         u"""
-        :level:        Level of the heading
-        :title:        Title of the heading
-        :tags:        Tags of the heading
-        :todo:        Todo state of the heading
-        :body:        Body of the heading
+        :level:		Level of the heading
+        :title:		Title of the heading
+        :tags:		Tags of the heading
+        :todo:		Todo state of the heading
+        :body:		Body of the heading
         :active_date: active date that is used in the agenda
         """
         DomObj.__init__(self, level=level, title=title, body=body)
@@ -61,6 +62,8 @@ class Heading(DomObj):
         # checkboxes
         self._checkboxes = CheckboxList(obj=self)
         self._cached_checkbox = None
+
+        self._logbook = Logbook(obj=self)
 
     def __unicode__(self):
         res = u'*' * self.level
@@ -192,11 +195,11 @@ class Heading(DomObj):
         Create a copy of the current heading. The heading will be completely
         detached and not even belong to a document anymore.
 
-        :including_children:    If True a copy of all children is create as
-                                well. If False the returned heading doesn't
-                                have any children.
-        :parent:                Don't use this parameter. It's set
-                                automatically.
+        :including_children:	If True a copy of all children is create as
+                            	well. If False the returned heading doesn't
+                            	have any children.
+        :parent:				Don't use this parameter. It's set
+                            	automatically.
         """
         heading = self.__class__(
             level=self.level, title=self.title,
@@ -219,7 +222,7 @@ class Heading(DomObj):
         u""" Iterate over all checkboxes of the current heading in serialized
         order
 
-        :returns:    Returns an iterator object which returns all checkboxes of
+        :returns:	Returns an iterator object which returns all checkboxes of
                     the current heading in serialized order
         """
         if not self.checkboxes:
@@ -246,20 +249,20 @@ class Heading(DomObj):
         checkbox=Checkbox, connect_with_heading=True):
         u""" Find checkbox in the given direction
 
-        :position: starting line, counting from 0 (in vim you start
+        :postition: starting line, counting from 0 (in vim you start
                     counting from 1, don't forget)
         :direction: downwards == Direction.FORWARD,
                     upwards == Direction.BACKWARD
         :checkbox:  Checkbox class from which new checkbox objects will be
-                    instantiated
+                    instanciated
         :connect_with_heading: if True, the newly created checkbox will be
-                                connected with the heading, otherwise not
+                            	connected with the heading, otherwise not
 
-        :returns:    New checkbox object or None
+        :returns:	New checkbox object or None
         """
         doc = self.document
         (start, end) = get_domobj_range(content=doc._content, position=position, direction=direction, identify_fun=checkbox.identify_checkbox)
-        # if out of current headinig range, return None
+        # if out of current headinig range, reutrn None
         heading_end = self.start + len(self) - 1
         if start is not None and start > heading_end:
             return None
@@ -277,11 +280,11 @@ class Heading(DomObj):
     def init_checkboxes(self, checkbox=Checkbox):
         u""" Initialize all checkboxes in current heading - build DOM.
 
-        :returns:    self
+        :returns:	self
         """
         def init_checkbox(_c):
             u"""
-            :returns    the initialized checkbox
+            :returns	the initialized checkbox
             """
             start = _c.end + 1
             prev_checkbox = None
@@ -333,9 +336,22 @@ class Heading(DomObj):
 
         return self
 
+    def init_logbook(self):
+        heading_end = self.start + len(self) - 1
+        self.logbook.clear()
+        for i, line in enumerate(self.document._content[self.start + 1:heading_end + 1]):
+            line_date = _text2orgdate(line)
+            if line_date and not line_date.active:
+                clock_line = ClockLine(
+                    date=line_date,
+                    orig_start=self.start + 1 + i,
+                    level=self.level + 1,
+                )
+                self.logbook.data.append(clock_line)
+
     def current_checkbox(self, position=None):
         u""" Find the current checkbox (search backward) and return the related object
-        :returns:    Checkbox object or None
+        :returns:	Checkbox object or None
         """
         if position is None:
             position = vim.current.window.cursor[0] - 1
@@ -396,14 +412,14 @@ class Heading(DomObj):
         orig_start=None):
         u""" Construct a new heading from the provided data
 
-        :data:            List of lines
+        :data:			List of lines
         :allowed_todo_states: TODO???
-        :document:        The document object this heading belongs to
-        :orig_start:    The original start of the heading in case it was read
+        :document:		The document object this heading belongs to
+        :orig_start:	The original start of the heading in case it was read
                         from a document. If orig_start is provided, the
                         resulting heading will not be marked dirty.
 
-        :returns:    The newly created heading
+        :returns:	The newly created heading
         """
         test_not_empty = lambda x: x != u''
 
@@ -460,15 +476,12 @@ class Heading(DomObj):
         else:
             new_heading.active_date = None
 
-        if new_heading.tags:
-            with open('/tmp/orgdebug.txt', 'a') as f:
-                print('Found tags', new_heading, file=f)
         return new_heading
 
     def update_subtasks(self, total=0, on=0):
         u""" Update subtask information for current heading
-        :total:    total # of top level checkboxes
-        :on:    # of top level checkboxes which are on
+        :total:	total # of top level checkboxes
+        :on:	# of top level checkboxes which are on
         """
         if total != 0:
             percent = (on * 100) / total
@@ -514,7 +527,7 @@ class Heading(DomObj):
         """ Retrieve the index value of current heading in the parents list of
         headings. This works also for top level headings.
 
-        :returns:    Index value or None if heading doesn't have a
+        :returns:	Index value or None if heading doesn't have a
                     parent/document or is not in the list of headings
         """
         if self.parent:
@@ -528,7 +541,7 @@ class Heading(DomObj):
         """ Retrieve the parents' list of headings. This works also for top
         level headings.
 
-        :returns:    List of headings or None if heading doesn't have a
+        :returns:	List of headings or None if heading doesn't have a
                     parent/document or is not in the list of headings
         """
         if self.parent:
@@ -625,7 +638,7 @@ class Heading(DomObj):
     @DomObj.title.setter
     def title(self, value):
         u""" Set the title and mark the document and the heading dirty """
-        # TODO these setter should be rewritten to also reuse code from DOM OBJ
+        # TODO these setter should be rewriten to also reuse code from DOM OBJ
         if type(value) not in (unicode, str):
             raise ValueError(u'Title must be a string.')
         v = value
@@ -676,6 +689,10 @@ class Heading(DomObj):
     @checkboxes.deleter
     def checkboxes(self):
         del self.checkboxes[:]
+
+    @property
+    def logbook(self):
+        return self._logbook
 
 
 class HeadingList(DomObjList):
