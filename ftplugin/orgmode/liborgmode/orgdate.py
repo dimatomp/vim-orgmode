@@ -61,19 +61,20 @@ _DATETIMERANGE_SAME_DAY_REGEX = re.compile(
     r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d\d):(\d\d)-(\d\d):(\d\d)>", re.UNICODE)
 
 
-def get_orgdate(data):
+def get_orgdate(data, active=None):
     u"""
     Parse the given data (can be a string or list). Return an OrgDate if data
     contains a string representation of an OrgDate; otherwise return None.
 
     data can be a string or a list containing strings.
+    active can be boolean if either active or inactive date is requested or None if any date is fine
     """
     # TODO maybe it should be checked just for iterable? Does it affect here if
     # in base __getitem__(slice(i,j)) doesn't return a list but userlist...
     if isinstance(data, list):
-        return _findfirst(_text2orgdate, data)
+        return _findfirst(lambda s: _text2orgdate(s, active=active), data)
     else:
-        return _text2orgdate(data)
+        return _text2orgdate(data, active=active)
     # if no dates found
     return None
 
@@ -89,95 +90,100 @@ def _findfirst(f, seq):
         return found
 
 
-def _text2orgdate(string):
+def _text2orgdate(string, active=None):
     u"""
     Transform the given string into an OrgDate.
     Return an OrgDate if data contains a string representation of an OrgDate;
     otherwise return None.
+
+    active can be boolean if either active or inactive date is requested or None if any date is fine
     """
-    # handle active datetime with same day
-    result = _DATETIMERANGE_SAME_DAY_REGEX.search(string)
-    if result:
-        try:
-            (syear, smonth, sday, shour, smin, ehour, emin) = \
-                [int(m) for m in result.groups()]
-            start = datetime.datetime(syear, smonth, sday, shour, smin)
-            end = datetime.datetime(syear, smonth, sday, ehour, emin)
-            return OrgTimeRange(True, start, end)
-        except BaseException:
-            return None
+    if active != False:
+        # handle active datetime with same day
+        result = _DATETIMERANGE_SAME_DAY_REGEX.search(string)
+        if result:
+            try:
+                (syear, smonth, sday, shour, smin, ehour, emin) = \
+                    [int(m) for m in result.groups()]
+                start = datetime.datetime(syear, smonth, sday, shour, smin)
+                end = datetime.datetime(syear, smonth, sday, ehour, emin)
+                return OrgTimeRange(True, start, end)
+            except BaseException:
+                return None
 
-    # handle active datetime
-    result = _DATETIMERANGE_REGEX.search(string)
-    if result:
-        try:
-            tmp = [int(m) for m in result.groups()]
-            (syear, smonth, sday, shour, smin, eyear, emonth, eday, ehour, emin) = tmp
-            start = datetime.datetime(syear, smonth, sday, shour, smin)
-            end = datetime.datetime(eyear, emonth, eday, ehour, emin)
-            return OrgTimeRange(True, start, end)
-        except BaseException:
-            return None
+        # handle active datetime
+        result = _DATETIMERANGE_REGEX.search(string)
+        if result:
+            try:
+                tmp = [int(m) for m in result.groups()]
+                (syear, smonth, sday, shour, smin, eyear, emonth, eday, ehour, emin) = tmp
+                start = datetime.datetime(syear, smonth, sday, shour, smin)
+                end = datetime.datetime(eyear, emonth, eday, ehour, emin)
+                return OrgTimeRange(True, start, end)
+            except BaseException:
+                return None
 
-    # handle active datetime
-    result = _DATERANGE_REGEX.search(string)
-    if result:
-        try:
-            tmp = [int(m) for m in result.groups()]
-            syear, smonth, sday, eyear, emonth, ehour = tmp
-            start = datetime.date(syear, smonth, sday)
-            end = datetime.date(eyear, emonth, ehour)
-            return OrgTimeRange(True, start, end)
-        except BaseException:
-            return None
+        # handle active datetime
+        result = _DATERANGE_REGEX.search(string)
+        if result:
+            try:
+                tmp = [int(m) for m in result.groups()]
+                syear, smonth, sday, eyear, emonth, ehour = tmp
+                start = datetime.date(syear, smonth, sday)
+                end = datetime.date(eyear, emonth, ehour)
+                return OrgTimeRange(True, start, end)
+            except BaseException:
+                return None
 
-    # handle active datetime
-    result = _DATETIME_REGEX.search(string)
-    if result:
-        try:
-            year, month, day, hour, minutes = [int(m) for m in result.groups()]
-            return OrgDateTime(True, year, month, day, hour, minutes)
-        except BaseException:
-            return None
+        # handle active datetime
+        result = _DATETIME_REGEX.search(string)
+        if result:
+            try:
+                year, month, day, hour, minutes = [int(m) for m in result.groups()]
+                return OrgDateTime(True, year, month, day, hour, minutes)
+            except BaseException:
+                return None
 
-    # handle passive datetime
-    result = _DATETIMERANGE_PASSIVE_REGEX.search(string)
-    if result:
-        try:
-            tmp = [int(m) for m in result.groups()]
-            (syear, smonth, sday, shour, smin, eyear, emonth, eday, ehour, emin) = tmp
-            start = datetime.datetime(syear, smonth, sday, shour, smin)
-            end = datetime.datetime(eyear, emonth, eday, ehour, emin)
-            return OrgTimeRange(False, start, end)
-        except BaseException:
-            return None
+    if active != True:
+        # handle passive datetime
+        result = _DATETIMERANGE_PASSIVE_REGEX.search(string)
+        if result:
+            try:
+                tmp = [int(m) for m in result.groups()]
+                (syear, smonth, sday, shour, smin, eyear, emonth, eday, ehour, emin) = tmp
+                start = datetime.datetime(syear, smonth, sday, shour, smin)
+                end = datetime.datetime(eyear, emonth, eday, ehour, emin)
+                return OrgTimeRange(False, start, end)
+            except BaseException:
+                return None
 
-    # handle passive datetime
-    result = _DATETIME_PASSIVE_REGEX.search(string)
-    if result:
-        try:
-            year, month, day, hour, minutes = [int(m) for m in result.groups()]
-            return OrgDateTime(False, year, month, day, hour, minutes)
-        except BaseException:
-            return None
+        # handle passive datetime
+        result = _DATETIME_PASSIVE_REGEX.search(string)
+        if result:
+            try:
+                year, month, day, hour, minutes = [int(m) for m in result.groups()]
+                return OrgDateTime(False, year, month, day, hour, minutes)
+            except BaseException:
+                return None
 
-    # handle passive dates
-    result = _DATE_PASSIVE_REGEX.search(string)
-    if result:
-        try:
-            year, month, day = [int(m) for m in result.groups()]
-            return OrgDate(False, year, month, day)
-        except BaseException:
-            return None
+        # handle passive dates
+        result = _DATE_PASSIVE_REGEX.search(string)
+        if result:
+            try:
+                year, month, day = [int(m) for m in result.groups()]
+                return OrgDate(False, year, month, day)
+            except BaseException:
+                return None
 
-    # handle active dates
-    result = _DATE_REGEX.search(string)
-    if result:
-        try:
-            year, month, day = [int(m) for m in result.groups()]
-            return OrgDate(True, year, month, day)
-        except BaseException:
-            return None
+    if active != False:
+        # handle active dates
+        result = _DATE_REGEX.search(string)
+        if result:
+            try:
+                year, month, day = [int(m) for m in result.groups()]
+                return OrgDate(True, year, month, day)
+            except BaseException:
+                return None
 
 
 class OrgDate(datetime.date):

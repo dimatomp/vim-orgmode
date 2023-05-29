@@ -469,9 +469,8 @@ class Heading(DomObj):
             new_heading._document = document
 
         # try to find active dates
-        tmp_orgdate = get_orgdate(data)
-        if tmp_orgdate and tmp_orgdate.active \
-            and not isinstance(tmp_orgdate, OrgTimeRange):
+        tmp_orgdate = get_orgdate(data, active=True)
+        if tmp_orgdate and not isinstance(tmp_orgdate, OrgTimeRange):
             new_heading.active_date = tmp_orgdate
         else:
             new_heading.active_date = None
