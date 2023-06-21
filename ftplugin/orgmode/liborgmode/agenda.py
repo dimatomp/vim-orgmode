@@ -36,7 +36,9 @@ def agenda_sorting_key(heading):
     #   day.
     now = datetime.datetime.now()
     today = now.date()
-    time_to_add = now.time() if today == orgtime else datetime.time(0, 0) if today < orgtime else datetime.time(23, 59)
+    if today > orgtime:
+        return orgtime.latest_time()
+    time_to_add = now.time() if today == orgtime else datetime.time(0, 0)
     return datetime.datetime.combine(orgtime, time_to_add)
 
 class AgendaManager(object):

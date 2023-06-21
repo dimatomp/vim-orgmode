@@ -15,6 +15,8 @@ from orgmode.py3compat.encode_compatibility import *
 from orgmode.py3compat.unicode_compatibility import *
 from orgmode.py3compat.py_py3_string import *
 
+from orgmode.liborgmode.orgdate import OrgDate
+
 class Agenda(object):
     u"""
     The Agenda Plugin uses liborgmode.agenda to display the agenda views.
@@ -191,19 +193,30 @@ class Agenda(object):
 
             p = h
             tags = []
+            deadline = None
             while p is not None:
                 tags += p.tags
+
+                if not deadline:
+                    deadline = p.deadline
+                elif p.deadline:
+                    n_deadline = p.deadline.latest_time() if isinstance(p.deadline, OrgDate) else p.deadline
+                    c_deadline = deadline.latest_time() if isinstance(deadline, OrgDate) else deadline
+                    if n_deadline < c_deadline:
+                        deadline = p.deadline
+
                 p = p.parent
 
             bufname = os.path.basename(vim.buffers[h.document.bufnr].name)
             bufname = bufname[:-4] if bufname.endswith(u'.org') else bufname
-            formatted = u"  %(bufname)s (%(bufnr)d)  %(todo)s  %(timestr)s  %(title)s %(tags)s" % {
+            optional_columns = [tags and ':' + ':'.join(tags) + ':', deadline and "DEADLINE: " + unicode(deadline)]
+            formatted = u"  %(bufname)s (%(bufnr)d)  %(todo)s  %(timestr)s  %(title)s %(opt)s" % {
                 'bufname': bufname,
                 'bufnr': h.document.bufnr,
                 'todo': h.todo,
                 'timestr': h.active_date.timestr(),
                 'title': h.title,
-                'tags': ':' + ':'.join(tags) + ':' if tags else ''
+                'opt': ' '.join(c for c in optional_columns if c)
             }
             final_agenda.append(formatted)
             cls.line2doc[len(final_agenda)] = (get_bufname(h.document.bufnr), h.document.bufnr, h.start)

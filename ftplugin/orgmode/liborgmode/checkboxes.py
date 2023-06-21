@@ -16,7 +16,6 @@ except:
 import vim
 from orgmode.liborgmode.base import MultiPurposeList, flatten_list
 from orgmode.liborgmode.orgdate import OrgTimeRange
-from orgmode.liborgmode.orgdate import get_orgdate
 from orgmode.liborgmode.dom_obj import DomObj, DomObjList, REGEX_SUBTASK, REGEX_SUBTASK_PERCENT, REGEX_HEADING, REGEX_CHECKBOX
 
 from orgmode.py3compat.encode_compatibility import *

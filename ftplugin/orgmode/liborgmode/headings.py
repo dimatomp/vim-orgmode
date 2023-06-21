@@ -12,7 +12,7 @@ import re
 import vim
 from orgmode.liborgmode.base import MultiPurposeList, flatten_list, Direction, get_domobj_range
 from orgmode.liborgmode.orgdate import OrgTimeRange
-from orgmode.liborgmode.orgdate import get_orgdate
+from orgmode.liborgmode.orgdate import get_orgdates
 from orgmode.liborgmode.checkboxes import Checkbox, CheckboxList
 from orgmode.liborgmode.dom_obj import DomObj, DomObjList, REGEX_SUBTASK, REGEX_SUBTASK_PERCENT, REGEX_HEADING, REGEX_TAG, REGEX_TODO
 
@@ -29,7 +29,7 @@ except:
 class Heading(DomObj):
     u""" Structural heading object """
 
-    def __init__(self, level=1, title=u'', tags=None, todo=None, body=None, active_date=None):
+    def __init__(self, level=1, title=u'', tags=None, todo=None, body=None, active_date=None, deadline=None):
         u"""
         :level:        Level of the heading
         :title:        Title of the heading
@@ -53,10 +53,9 @@ class Heading(DomObj):
         if tags:
             self.tags = tags
 
-        # active date
-        self._active_date = active_date
-        if active_date:
-            self.active_date = active_date
+        # dates
+        self.active_date = active_date
+        self.deadline = deadline
 
         # checkboxes
         self._checkboxes = CheckboxList(obj=self)
@@ -452,13 +451,14 @@ class Heading(DomObj):
         if document:
             new_heading._document = document
 
-        # try to find active dates
-        tmp_orgdate = get_orgdate(data)
-        if tmp_orgdate and tmp_orgdate.active \
-            and not isinstance(tmp_orgdate, OrgTimeRange):
-            new_heading.active_date = tmp_orgdate
-        else:
-            new_heading.active_date = None
+        new_heading.active_date, new_heading.deadline = None, None
+        for tmp_orgdate, line in get_orgdates(data):
+            if not new_heading.active_date and tmp_orgdate.active \
+                and not isinstance(tmp_orgdate, OrgTimeRange):
+                new_heading.active_date = tmp_orgdate
+            elif not new_heading.deadline and 'DEADLINE:' in line \
+                and not isinstance(tmp_orgdate, OrgTimeRange):
+                new_heading.deadline = tmp_orgdate
 
         return new_heading
 
