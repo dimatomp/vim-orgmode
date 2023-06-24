@@ -197,11 +197,17 @@ class Heading(DomObj):
         :parent:                Don't use this parameter. It's set
                                 automatically.
         """
-        heading = self.__class__(
-            level=self.level, title=self.title,
-            tags=self.tags, todo=self.todo, body=self.body[:])
         if parent:
+            heading = self.__class__(
+                level=self.level, title=self.title,
+                tags=self.tags, todo=self.todo, body=self.body[:],
+                active_date=self.active_date)
             parent.children.append(heading)
+        else:
+            heading = GeneratedHeading(
+                level=self.level, title=self.title,
+                tags=self.tags, todo=self.todo, body=self.body[:],
+                active_date=self.active_date, derived_from=self)
         if including_children and self.children:
             for item in self.children:
                 item.copy(
@@ -674,6 +680,22 @@ class Heading(DomObj):
     def checkboxes(self):
         del self.checkboxes[:]
 
+class GeneratedHeading(Heading):
+    def __init__(self, level=1, title=u'', tags=None, todo=None, body=None, active_date=None, deadline=None, derived_from=None):
+        super().__init__(level, title, tags, todo, body, active_date, deadline)
+        self.derived_from = derived_from
+
+    @property
+    def document(self):
+        return self.derived_from.document
+    
+    @property
+    def parent(self):
+        return self.derived_from.parent
+
+    @property
+    def start(self):
+        return self.derived_from.start
 
 class HeadingList(DomObjList):
     u"""

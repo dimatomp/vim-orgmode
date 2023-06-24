@@ -16,6 +16,7 @@ u"""
 """
 from datetime import datetime
 from datetime import timedelta
+from orgmode.liborgmode.orgdate import OrgRepeatedTimeBase 
 
 try:
     from itertools import ifilter as filter
@@ -65,6 +66,10 @@ def is_within_week_and_active_todo(heading):
     """
     return is_within_week(heading) and contains_active_todo(heading)
 
+
+def is_repeated(heading):
+    if contains_active_date(heading):
+        return isinstance(heading.active_date, OrgRepeatedTimeBase)
 
 def contains_active_todo(heading):
     u"""

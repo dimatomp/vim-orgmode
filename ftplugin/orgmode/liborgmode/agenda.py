@@ -16,6 +16,8 @@ from orgmode.liborgmode.agendafilter import filter_items
 from orgmode.liborgmode.agendafilter import is_within_week_and_active_todo
 from orgmode.liborgmode.agendafilter import contains_active_todo
 from orgmode.liborgmode.agendafilter import contains_active_date
+from orgmode.liborgmode.agendafilter import is_repeated
+from orgmode.liborgmode.agendafilter import is_within_week
 from orgmode.liborgmode.orgdate import OrgDateTime, OrgTimeRange
 import datetime
 
@@ -67,8 +69,17 @@ class AgendaManager(object):
         filtered = []
         for document in iter(documents):
             # filter and return headings
-            filtered.extend(filter_items(document.all_headings(),
+            c_filtered = list(filter_items(document.all_headings(),
                                 [is_within_week_and_active_todo]))
+            for h in list(filter_items(c_filtered, [is_repeated])):
+                h = h.copy(including_children=False)
+                h.active_date = h.active_date.next()
+                while is_within_week(h):
+                    c_filtered.append(h)
+                    h = h.copy(including_children=False)
+                    h.active_date = h.active_date.next()
+            filtered += c_filtered
+            
         return sorted(filtered, key=agenda_sorting_key)
 
     def get_timestamped_items(self, documents):
