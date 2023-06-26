@@ -31,7 +31,7 @@ from abc import abstractmethod
 # <2011-09-12 Mon>
 _DATE_REGEX = re.compile(r"(?<!-)<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w>(?!-)", re.UNICODE)
 # <2011-09-12 Mon +1w>
-_DATE_REGEX_REPEATED = re.compile(r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w \+([0-9])(d|wd|w|m|wm)>", re.UNICODE)
+_DATE_REGEX_REPEATED = re.compile(r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w \+([1-9])(d|wd|w|m|wm)>", re.UNICODE)
 # [2011-09-12 Mon]
 _DATE_PASSIVE_REGEX = re.compile(r"\[(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w\]", re.UNICODE)
 
@@ -40,7 +40,7 @@ _DATETIME_REGEX = re.compile(
     r"(?<!-)<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d)>(?!-)", re.UNICODE)
 # <2011-09-12 Mon 10:20 +1w>
 _DATETIME_REGEX_REPEATED = re.compile(
-    r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d) \+([0-9])(d|wd|w|m|wm)>", re.UNICODE)
+    r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d) \+([1-9])(d|wd|w|m|wm)>", re.UNICODE)
 # [2011-09-12 Mon 10:20]
 _DATETIME_PASSIVE_REGEX = re.compile(
     r"\[(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d)\]", re.UNICODE)
