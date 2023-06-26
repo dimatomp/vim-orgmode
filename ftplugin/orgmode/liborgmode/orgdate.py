@@ -151,9 +151,9 @@ def _text2orgdate(string):
     # handle active repeated dates
     for result in re.finditer(_DATE_REGEX_REPEATED, string):
         try:
-            year, month, day, period = [int(m) for m in result.groups()[-1]]
+            year, month, day, period = [int(m) for m in result.groups()[:-1]]
             unit = result.groups()[-1]
-            yield OrgDate(True, year, month, day, period, unit)
+            yield OrgRepeatedDate(True, year, month, day, period, unit)
         except BaseException:
             return
 
@@ -175,12 +175,15 @@ class OrgRepeatedTimeBase:
         raw_date = datetime.date(date.year, date.month, date.day)
         if self.unit[-1] == 'd':
             next = raw_date + datetime.timedelta(days=self.period)
+            if len(self.unit) == 2 and next.weekday() > 4:
+                next += datetime.timedelta(days=7 - next.weekday())
         elif self.unit[-1] == 'w':
             next = raw_date + datetime.timedelta(days=7 * self.period)
         elif self.unit[-1] == 'm':
-            next = raw_date + relativedelta(month=self.period)
-        if len(self.unit) == 2 and next.weekday() > 4:
-            next += datetime.timedelta(days=7 - next.weekday())
+            next = raw_date + relativedelta(months=self.period)
+            if len(self.unit) == 2 and next.weekday() != self.weekday():
+                farther_next = next + datetime.timedelta(days=(self.weekday() - next.weekday() + 7) % 7)
+                next = farther_next if farther_next.month == next.month else next - datetime.timedelta(days=(next.weekday() - self.weekday() + 7) % 7)
         return next
 
     @abstractmethod

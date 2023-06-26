@@ -14,6 +14,8 @@ u"""
     The function filter_items() can combine different filters and only returns
     the filtered headings.
 """
+from datetime import date
+from datetime import time
 from datetime import datetime
 from datetime import timedelta
 from orgmode.liborgmode.orgdate import OrgRepeatedTimeBase 
@@ -53,7 +55,7 @@ def is_within_week(heading):
             older False otherwise.
     """
     if contains_active_date(heading):
-        next_week = datetime.today() + timedelta(days=7)
+        next_week = datetime.combine(date.today() + timedelta(days=8), time(0, 0))
         if heading.active_date < next_week:
             return True
 
