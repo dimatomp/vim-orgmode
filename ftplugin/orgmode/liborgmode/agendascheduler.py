@@ -39,12 +39,15 @@ max_capacity = (7, 12)
 def reschedule_items(all_items):
     min_active_date = min(h.active_date.date() for h in all_items if get_rescheduled_date(h))
 
+    def has_to_be_rescheduled(item):
+        return get_rescheduled_date(item) or is_not_available_for_scheduling(item.active_date.date())
+
+    are_urgent_items_selected = len([h for h in all_items if has_to_be_rescheduled(h) and h.get_parent_deadline()]) != 0
+
     def is_to_be_rescheduled(item):
-        active_date = item.active_date.date()
         return is_reschedulable(item) and (
-            item.get_parent_deadline() and active_date > min_active_date
-            or get_rescheduled_date(item)
-            or is_not_available_for_scheduling(active_date))
+            are_urgent_items_selected and item.get_parent_deadline() and item.active_date.date() > min_active_date
+            or has_to_be_rescheduled(item))
 
     available_capacity = compute_available_capacity(filter(lambda h: not is_to_be_rescheduled(h), all_items), min_active_date, lambda h: h.active_date)
     urgent_items = list(sorted(filter(lambda h: is_to_be_rescheduled(h) and h.get_parent_deadline(), all_items), key=lambda h: (date_to_datetime(h.get_parent_deadline()), agenda_sorting_key(h))))
@@ -58,7 +61,7 @@ def reschedule_items(all_items):
 def can_be_rescheduled_to(item, target_date):
     active_date = item.active_date.date()
     return (set(item.get_all_tags()) & allowed_tags_for_weekdays[target_date.weekday()]) \
-        and active_date != target_date \
+        and (active_date != target_date or item.get_parent_deadline() and not get_rescheduled_date(item)) \
         and (target_date != date.today() or active_date < target_date)
 
 def do_reschedule(items, available_capacity):
@@ -78,8 +81,8 @@ def do_reschedule(items, available_capacity):
             if s:
                 for i, j in enumerate(s):
                     item = items[j - i]
-                    item.rescheduled_date = get_new_date(item).assign_new_date(date)
-                    if item.get_parent_deadline() and date_to_datetime(item.rescheduled_date) > date_to_datetime(item.get_parent_deadline()):
+                    item.rescheduled_date = get_new_date(item).assign_new_date(date) if date != item.active_date.date().raw() else None
+                    if item.get_parent_deadline() and date_to_datetime(get_new_date(item)) > date_to_datetime(item.get_parent_deadline()):
                         echom('Could not reschedule an item with fixed deadline: ' + item.title)
                     del items[j - i]
                 break
