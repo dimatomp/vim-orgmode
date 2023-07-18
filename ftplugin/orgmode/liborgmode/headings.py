@@ -12,6 +12,7 @@ import re
 import vim
 from orgmode.liborgmode.base import MultiPurposeList, flatten_list, Direction, get_domobj_range
 from orgmode.liborgmode.orgdate import OrgTimeRange
+from orgmode.liborgmode.orgdate import OrgDate
 from orgmode.liborgmode.orgdate import get_orgdates
 from orgmode.liborgmode.checkboxes import Checkbox, CheckboxList
 from orgmode.liborgmode.logbook import ClockLine, Logbook
@@ -189,7 +190,7 @@ class Heading(DomObj):
             elif not self.active_date and not other.active:
                 return False
 
-    def copy(self, including_children=True, parent=None):
+    def copy(self, including_children=True, cls=None, parent=None):
         u"""
         Create a copy of the current heading. The heading will be completely
         detached and not even belong to a document anymore.
@@ -200,17 +201,18 @@ class Heading(DomObj):
         :parent:				Don't use this parameter. It's set
                             	automatically.
         """
-        if parent:
+        if cls:
+            heading = cls(
+                level=self.level, title=self.title,
+                tags=self.tags, todo=self.todo, body=self.body[:],
+                active_date=self.active_date, deadline=self.deadline, derived_from=self)
+        else:
             heading = self.__class__(
                 level=self.level, title=self.title,
                 tags=self.tags, todo=self.todo, body=self.body[:],
-                active_date=self.active_date)
+                active_date=self.active_date, deadline=self.deadline)
+        if parent:
             parent.children.append(heading)
-        else:
-            heading = GeneratedHeading(
-                level=self.level, title=self.title,
-                tags=self.tags, todo=self.todo, body=self.body[:],
-                active_date=self.active_date, derived_from=self)
         if including_children and self.children:
             for item in self.children:
                 item.copy(
@@ -222,6 +224,28 @@ class Heading(DomObj):
         heading._dirty_heading = self.is_dirty_heading
 
         return heading
+
+    def get_all_tags(self):
+        p = self
+        tags = []
+        while p is not None:
+            tags += p.tags
+            p = p.parent
+        return tags
+
+    def get_parent_deadline(self):
+        p = self
+        deadline = None
+        while p is not None:
+            if not deadline:
+                deadline = p.deadline
+            elif p.deadline:
+                n_deadline = p.deadline.latest_time() if isinstance(p.deadline, OrgDate) else p.deadline
+                c_deadline = deadline.latest_time() if isinstance(deadline, OrgDate) else deadline
+                if n_deadline < c_deadline:
+                    deadline = p.deadline
+            p = p.parent
+        return deadline
 
     def all_checkboxes(self):
         u""" Iterate over all checkboxes of the current heading in serialized

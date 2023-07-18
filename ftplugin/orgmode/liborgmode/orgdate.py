@@ -252,6 +252,12 @@ class OrgDate(datetime.date):
     def date(self):
         return self
 
+    def raw(self):
+        return datetime.date(self.year, self.month, self.day)
+
+    def assign_new_date(self, new_date):
+        return OrgDate(self.active, new_date.year, new_date.month, new_date.day)
+
     def strftime(self, fmt):
         return u_decode(datetime.date.strftime(self, u_encode(fmt)))
 
@@ -321,6 +327,9 @@ class OrgDateTime(datetime.datetime):
 
     def date(self):
         return OrgDate(self.active, self.year, self.month, self.day)
+
+    def assign_new_date(self, new_date):
+        return OrgDateTime(self.active, new_date.year, new_date.month, new_date.day, self.hour, self.minute)
 
     def strftime(self, fmt):
         return u_decode(datetime.datetime.strftime(self, u_encode(fmt)))

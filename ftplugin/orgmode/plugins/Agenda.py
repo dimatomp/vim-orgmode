@@ -17,6 +17,10 @@ from orgmode.py3compat.py_py3_string import *
 
 from orgmode.liborgmode.orgdate import OrgDate
 
+from orgmode.liborgmode.agendascheduler import toggle_rescheduling
+from orgmode.liborgmode.agendascheduler import get_rescheduled_date
+from orgmode.liborgmode.agendascheduler import reschedule_items
+
 class Agenda(object):
     u"""
     The Agenda Plugin uses liborgmode.agenda to display the agenda views.
@@ -107,6 +111,17 @@ class Agenda(object):
         return [ORGMODE.get_document(i) for i in agenda_nums if i is not None]
 
     @classmethod
+    def toggle_rescheduling(cls):
+        row = vim.current.window.cursor[0]
+        heading = cls.line2doc[row]
+        toggle_rescheduling(heading)
+        reschedule_items(list(cls.line2doc.values()))
+        vim.command(u_encode(u'setlocal modifiable'))
+        for row, heading in cls.line2doc.items():
+            vim.current.buffer[row - 1] = cls.format_agenda_item(heading)
+        vim.command(u_encode(u'setlocal nomodifiable'))
+
+    @classmethod
     def opendoc(cls, split=False, switch=False):
         u"""
         If you are in the agenda view jump to the document the item in the
@@ -118,7 +133,10 @@ class Agenda(object):
         """
         row, _ = vim.current.window.cursor
         try:
-            bufname, bufnr, destrow = cls.line2doc[row]
+            heading = cls.line2doc[row]
+            bufnr = heading.document.bufnr
+            bufname = get_bufname(bufnr)
+            destrow = heading.start
         except:
             return
 
@@ -148,11 +166,35 @@ class Agenda(object):
         cls.list_next_week_for(agenda_documents)
 
     @classmethod
+    def list_all_agenda(cls):
+        agenda_documents = cls._get_agendadocuments()
+        if not agenda_documents:
+            return
+        cls.list_active_todo(agenda_documents)
+
+    @classmethod
     def list_next_week_for_buffer(cls):
         agenda_documents = vim.current.buffer.name
         loaded_agendafiles = cls._load_agendafiles([agenda_documents])
         cls.list_next_week_for(loaded_agendafiles)
+    
+    @classmethod
+    def list_active_todo(cls, agenda_documents):
+        raw_agenda = ORGMODE.agenda_manager.get_active_todo(
+            agenda_documents)
 
+        # if raw_agenda is empty, return directly
+        if not raw_agenda:
+            vim.command('echom "All caught-up. No agenda or active todo next week."')
+            return
+
+        # create buffer at bottom
+        cmd = [
+            u'setlocal filetype=orgagenda',
+            u'nnoremap <silent> <buffer> L :exec "%s ORGMODE.plugins[u\'Agenda\'].toggle_rescheduling()"<CR>' % VIM_PY_CALL]
+        cls._switch_to(u'AGENDA', cmd)
+
+        cls.generate_agenda_buffer(raw_agenda)
 
     @classmethod
     def list_next_week_for(cls, agenda_documents):
@@ -168,6 +210,10 @@ class Agenda(object):
         cmd = [u'setlocal filetype=orgagenda', ]
         cls._switch_to(u'AGENDA', cmd)
 
+        cls.generate_agenda_buffer(raw_agenda)
+
+    @classmethod
+    def generate_agenda_buffer(cls, raw_agenda):
         # line2doc is a dic with the mapping:
         #     line in agenda buffer --> source document
         # It's easy to jump to the right document this way
@@ -191,35 +237,9 @@ class Agenda(object):
                 # update last_date
                 last_date = active_date_no_time
 
-            p = h
-            tags = []
-            deadline = None
-            while p is not None:
-                tags += p.tags
-
-                if not deadline:
-                    deadline = p.deadline
-                elif p.deadline:
-                    n_deadline = p.deadline.latest_time() if isinstance(p.deadline, OrgDate) else p.deadline
-                    c_deadline = deadline.latest_time() if isinstance(deadline, OrgDate) else deadline
-                    if n_deadline < c_deadline:
-                        deadline = p.deadline
-
-                p = p.parent
-
-            bufname = os.path.basename(vim.buffers[h.document.bufnr].name)
-            bufname = bufname[:-4] if bufname.endswith(u'.org') else bufname
-            optional_columns = [tags and ':' + ':'.join(tags) + ':', deadline and "DEADLINE: " + unicode(deadline)]
-            formatted = u"  %(bufname)s (%(bufnr)d)  %(todo)s  %(timestr)s  %(title)s %(opt)s" % {
-                'bufname': bufname,
-                'bufnr': h.document.bufnr,
-                'todo': h.todo,
-                'timestr': h.active_date.timestr(),
-                'title': h.title,
-                'opt': ' '.join(c for c in optional_columns if c)
-            }
+            formatted = cls.format_agenda_item(h)
             final_agenda.append(formatted)
-            cls.line2doc[len(final_agenda)] = (get_bufname(h.document.bufnr), h.document.bufnr, h.start)
+            cls.line2doc[len(final_agenda)] = h
 
         # show agenda
         vim.current.buffer[:] = [u_encode(i) for i in final_agenda]
@@ -229,6 +249,26 @@ class Agenda(object):
             vim.command(u_encode(u'normal! %sgg<CR>' % today_row))
         except:
             pass
+
+    @classmethod
+    def format_agenda_item(cls, heading):
+        bufname = os.path.basename(vim.buffers[heading.document.bufnr].name)
+        bufname = bufname[:-4] if bufname.endswith(u'.org') else bufname
+        rescheduled_date = get_rescheduled_date(heading)
+        tags = heading.get_all_tags()
+        deadline = heading.get_parent_deadline()
+        optional_columns = [
+            tags and ':' + ':'.join(tags) + ':',
+            rescheduled_date and '-> ' + unicode(rescheduled_date),
+            deadline and "DEADLINE: " + unicode(deadline)]
+        return u"  %(bufname)s (%(bufnr)d)  %(todo)s  %(timestr)s  %(title)s %(opt)s" % {
+            'bufname': bufname,
+            'bufnr': heading.document.bufnr,
+            'todo': heading.todo,
+            'timestr': heading.active_date.timestr(),
+            'title': heading.title,
+            'opt': ' '.join(c for c in optional_columns if c)
+        }
 
     @classmethod
     def list_all_todos(cls, current_buffer=False):
@@ -258,7 +298,7 @@ class Agenda(object):
         for i, h in enumerate(raw_agenda):
             tmp = u"%s %s" % (h.todo, h.title)
             final_agenda.append(tmp)
-            cls.line2doc[len(final_agenda)] = (get_bufname(h.document.bufnr), h.document.bufnr, h.start)
+            cls.line2doc[len(final_agenda)] = h
 
         # show agenda
         vim.current.buffer[:] = [u_encode(i) for i in final_agenda]
@@ -283,7 +323,7 @@ class Agenda(object):
         for i, h in enumerate(raw_agenda):
             tmp = fmt.format('{} {}', h.todo, h.title).lstrip().rstrip()
             final_agenda.append(tmp)
-            cls.line2doc[len(final_agenda)] = (get_bufname(h.document.bufnr), h.document.bufnr, h.start)
+            cls.line2doc[len(final_agenda)] = h
 
         # show agenda
         vim.current.buffer[:] = [u_encode(i) for i in final_agenda]
@@ -308,6 +348,13 @@ class Agenda(object):
             function=u'%s ORGMODE.plugins[u"Agenda"].list_all_todos(current_buffer=True)' % VIM_PY_CALL,
             key_mapping=u'<localleader>caT',
             menu_desrc=u'Agenda for all TODOs based on current buffer'
+        )
+        add_cmd_mapping_menu(
+            self,
+            name=u"OrgAgendaAll",
+            function=u'%s ORGMODE.plugins[u"Agenda"].list_all_agenda()' % VIM_PY_CALL,
+            key_mapping=u'<localleader>caw',
+            menu_desrc=u'Agenda for entire time'
         )
         add_cmd_mapping_menu(
             self,
