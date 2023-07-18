@@ -23,17 +23,24 @@ u"""
 
 import datetime
 import re
+from dateutil.relativedelta import relativedelta
 
 from orgmode.py3compat.encode_compatibility import *
+from abc import abstractmethod
 
 # <2011-09-12 Mon>
 _DATE_REGEX = re.compile(r"(?<!-)<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w>(?!-)", re.UNICODE)
+# <2011-09-12 Mon +1w>
+_DATE_REGEX_REPEATED = re.compile(r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w \+([1-9])(d|wd|w|m|wm)>", re.UNICODE)
 # [2011-09-12 Mon]
 _DATE_PASSIVE_REGEX = re.compile(r"\[(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w\]", re.UNICODE)
 
 # <2011-09-12 Mon 10:20>
 _DATETIME_REGEX = re.compile(
     r"(?<!-)<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d)>(?!-)", re.UNICODE)
+# <2011-09-12 Mon 10:20 +1w>
+_DATETIME_REGEX_REPEATED = re.compile(
+    r"<(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d) \+([1-9])(d|wd|w|m|wm)>", re.UNICODE)
 # [2011-09-12 Mon 10:20]
 _DATETIME_PASSIVE_REGEX = re.compile(
     r"(?<!-)\[(\d\d\d\d)-(\d\d)-(\d\d) [A-Z]\w\w (\d{1,2}):(\d\d)\](?!-)", re.UNICODE)
@@ -117,6 +124,15 @@ def _text2orgdate(string, active=None):
         except BaseException:
             return
 
+    # handle active repeated datetime
+    for result in re.finditer(_DATETIME_REGEX_REPEATED, string):
+        try:
+            year, month, day, hour, minutes, period = [int(m) for m in result.groups()[:-1]]
+            unit = result.groups()[-1]
+            yield OrgRepeatedDateTime(True, year, month, day, hour, minutes, period, unit)
+        except BaseException:
+            return
+
     # handle active datetime
     for result in re.finditer(_DATETIME_REGEX, string):
         try:
@@ -152,6 +168,15 @@ def _text2orgdate(string, active=None):
         except BaseException:
             return
 
+    # handle active repeated dates
+    for result in re.finditer(_DATE_REGEX_REPEATED, string):
+        try:
+            year, month, day, period = [int(m) for m in result.groups()[:-1]]
+            unit = result.groups()[-1]
+            yield OrgRepeatedDate(True, year, month, day, period, unit)
+        except BaseException:
+            return
+
     # handle active dates
     for result in re.finditer(_DATE_REGEX, string):
         try:
@@ -160,6 +185,35 @@ def _text2orgdate(string, active=None):
         except BaseException:
             return
 
+class OrgRepeatedTimeBase:
+    def __init__(self, period, unit):
+        self.period = period
+        self.unit = unit
+
+    def _advance(self):
+        date = self.date()
+        raw_date = datetime.date(date.year, date.month, date.day)
+        if self.unit[-1] == 'd':
+            next = raw_date + datetime.timedelta(days=self.period)
+            if len(self.unit) == 2 and next.weekday() > 4:
+                next += datetime.timedelta(days=7 - next.weekday())
+        elif self.unit[-1] == 'w':
+            next = raw_date + datetime.timedelta(days=7 * self.period)
+        elif self.unit[-1] == 'm':
+            next = raw_date + relativedelta(months=self.period)
+            if len(self.unit) == 2 and next.weekday() != self.weekday():
+                farther_next = next + datetime.timedelta(days=(self.weekday() - next.weekday() + 7) % 7)
+                next = farther_next if farther_next.month == next.month else next - datetime.timedelta(days=(next.weekday() - self.weekday() + 7) % 7)
+        return next
+
+    @abstractmethod
+    def next(self): pass
+
+    @abstractmethod
+    def date(self): pass
+
+    def _period_str(self):
+        return '+%d%s' % (self.period, self.unit)
 
 class OrgDate(datetime.date):
     u"""
@@ -201,14 +255,46 @@ class OrgDate(datetime.date):
     def strftime(self, fmt):
         return u_decode(datetime.date.strftime(self, u_encode(fmt)))
 
+class OrgRepeatedDate(OrgDate, OrgRepeatedTimeBase):
+    u"""
+    OrgRepeatedDate represents a repeated date like '2011-08-29 Mon +1w'.
+
+    OrgRepeatedDates can be active or inactive.
+
+    NOTE: date is immutable. That's why there needs to be __new__().
+    See: http://docs.python.org/reference/datamodel.html#object.__new__
+    """
+    def __init__(self, active, year, month, day, period, unit):
+        OrgDate.__init__(self, active, year, month, day)
+        OrgRepeatedTimeBase.__init__(self, period, unit)
+        pass
+
+    def __new__(cls, active, year, month, day, period, unit):
+        return OrgDate.__new__(cls, active, year, month, day)
+
+    def __unicode__(self):
+        u"""
+        Return a string representation.
+        """
+        if self.active:
+            return self.strftime(u'<%Y-%m-%d %a ' + self._period_str() + '>')
+        else:
+            return self.strftime(u'[%Y-%m-%d %a ' + self._period_str() + ']')
+
+    def date(self):
+        return OrgDate(self.active, self.year, self.month, self.day)
+
+    def next(self):
+        next = self._advance()
+        return OrgRepeatedDate(self.active, next.year, next.month, next.day, self.period, self.unit)
 
 class OrgDateTime(datetime.datetime):
     u"""
-    OrgDateTime represents a normal date like '2011-08-29 Mon'.
+    OrgDateTime represents a normal time like '2011-08-29 Mon 11:00'.
 
     OrgDateTime can be active or inactive.
 
-    NOTE: date is immutable. That's why there needs to be __new__().
+    NOTE: datetime is immutable. That's why there needs to be __new__().
     See: http://docs.python.org/reference/datamodel.html#object.__new__
     """
 
@@ -239,6 +325,35 @@ class OrgDateTime(datetime.datetime):
     def strftime(self, fmt):
         return u_decode(datetime.datetime.strftime(self, u_encode(fmt)))
 
+class OrgRepeatedDateTime(OrgDateTime, OrgRepeatedTimeBase):
+    u"""
+    OrgDateTimeRepeated represents a repeated time like '2011-08-29 Mon 11:00'.
+
+    OrgDateTimeRepeated can be active or inactive.
+
+    NOTE: datetime is immutable. That's why there needs to be __new__().
+    See: http://docs.python.org/reference/datamodel.html#object.__new__
+    """
+
+    def __init__(self, active, year, month, day, hour, mins, period, unit):
+        OrgDateTime.__init__(self, active, year, month, day, hour, mins)
+        OrgRepeatedTimeBase.__init__(self, period, unit)
+
+    def __new__(cls, active, year, month, day, hour, minute, period, unit):
+        return OrgDateTime.__new__(cls, active, year, month, day, hour, minute)
+
+    def __unicode__(self):
+        u"""
+        Return a string representation.
+        """
+        if self.active:
+            return self.strftime(u'<%Y-%m-%d %a %H:%M ' + self._period_str() + '>')
+        else:
+            return self.strftime(u'[%Y-%m-%d %a %H:%M ' + self._period_str() + ']')
+    
+    def next(self):
+        next = self._advance()
+        return OrgRepeatedDateTime(self.active, next.year, next.month, next.day, self.hour, self.minute, self.period, self.unit)
 
 class OrgTimeRange(object):
     u"""

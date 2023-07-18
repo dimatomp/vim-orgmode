@@ -29,6 +29,51 @@ class EditStructure(object):
         self.keybindings = []
 
     @classmethod
+    def _insert_heading(cls, new_heading, below=None, insert_mode=False, end_of_last_child=False):
+        d = ORGMODE.get_document()
+        current_heading = d.current_heading()
+        cursor = vim.current.window.cursor[:]
+
+        # it's weird but this is the behavior of original orgmode
+        if below is None:
+            below = cursor[1] != 0 or end_of_last_child
+
+        # insert newly created heading
+        l = current_heading.get_parent_list()
+        idx = current_heading.get_index_in_parent_list()
+        if l is not None and idx is not None:
+            l.insert(idx + (1 if below else 0), new_heading)
+        else:
+            raise HeadingDomError(u'Current heading is not properly linked in DOM')
+
+        if below and not end_of_last_child:
+            # append heading at the end of current heading and also take
+            # over the children of current heading
+            for child in current_heading.children:
+                new_heading.children.append(child, taint=False)
+            current_heading.children.remove_slice(
+                0, len(current_heading.children),
+                taint=False)
+
+        # if cursor is currently on a heading, insert parts of it into the
+        # newly created heading
+        if insert_mode and cursor[1] != 0 and cursor[0] == current_heading.start_vim:
+            offset = cursor[1] - current_heading.level - 1 - (
+                len(current_heading.todo) + 1 if current_heading.todo else 0)
+            if offset < 0:
+                offset = 0
+            if int(settings.get(u'org_improve_split_heading', u'1')) and \
+                offset > 0 and len(current_heading.title) == offset + 1 \
+                and current_heading.title[offset - 1] not in (u' ', u'\t'):
+                offset += 1
+            new_heading.title = current_heading.title[offset:]
+            current_heading.title = current_heading.title[:offset]
+            new_heading.body = current_heading.body[:]
+            current_heading.body = []
+
+        d.write()
+
+    @classmethod
     def new_heading(cls, below=None, insert_mode=False, end_of_last_child=False):
         u"""
         :below:                True, insert heading below current heading, False,
@@ -62,44 +107,8 @@ class EditStructure(object):
 
         heading = Heading(level=current_heading.level)
 
-        # it's weird but this is the behavior of original orgmode
-        if below is None:
-            below = cursor[1] != 0 or end_of_last_child
+        cls._insert_heading(heading, below, insert_mode, end_of_last_child)
 
-        # insert newly created heading
-        l = current_heading.get_parent_list()
-        idx = current_heading.get_index_in_parent_list()
-        if l is not None and idx is not None:
-            l.insert(idx + (1 if below else 0), heading)
-        else:
-            raise HeadingDomError(u'Current heading is not properly linked in DOM')
-
-        if below and not end_of_last_child:
-            # append heading at the end of current heading and also take
-            # over the children of current heading
-            for child in current_heading.children:
-                heading.children.append(child, taint=False)
-            current_heading.children.remove_slice(
-                0, len(current_heading.children),
-                taint=False)
-
-        # if cursor is currently on a heading, insert parts of it into the
-        # newly created heading
-        if insert_mode and cursor[1] != 0 and cursor[0] == current_heading.start_vim:
-            offset = cursor[1] - current_heading.level - 1 - (
-                len(current_heading.todo) + 1 if current_heading.todo else 0)
-            if offset < 0:
-                offset = 0
-            if int(settings.get(u'org_improve_split_heading', u'1')) and \
-                offset > 0 and len(current_heading.title) == offset + 1 \
-                and current_heading.title[offset - 1] not in (u' ', u'\t'):
-                offset += 1
-            heading.title = current_heading.title[offset:]
-            current_heading.title = current_heading.title[:offset]
-            heading.body = current_heading.body[:]
-            current_heading.body = []
-
-        d.write()
         # do not start insert upon adding new headings, unless already in insert mode. Issue #211
         if int(settings.get(u'org_prefer_insert_mode', u'1')) or insert_mode:
             vim.command(u_encode(u'exe "normal %dgg"|startinsert!' % (heading.start_vim, )))
