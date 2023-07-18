@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 def toggle_rescheduling(h):
     if not isinstance(h, RescheduledHeading):
+        echom('Not reschedulable')
         return
     h.rescheduled_date = None if h.rescheduled_date else h.active_date
 
@@ -28,13 +29,22 @@ story_points = {
     'mtg': (0, 1)
 }
 
+holidays = [
+    (date(2023, 8, 1), date(2023, 8, 16)),
+    (date(2023, 8, 23), date(2023, 9, 3)),
+]
+
 max_capacity = (7, 12)
 
 def reschedule_items(all_items):
     min_active_date = min(h.active_date.date() for h in all_items if get_rescheduled_date(h))
 
     def is_to_be_rescheduled(item):
-        return is_reschedulable(item) and (item.get_parent_deadline() and item.active_date.date() > min_active_date or get_rescheduled_date(item))
+        active_date = item.active_date.date()
+        return is_reschedulable(item) and (
+            item.get_parent_deadline() and active_date > min_active_date
+            or get_rescheduled_date(item)
+            or is_not_available_for_scheduling(active_date))
 
     available_capacity = compute_available_capacity(filter(lambda h: not is_to_be_rescheduled(h), all_items), min_active_date, lambda h: h.active_date)
     urgent_items = list(sorted(filter(lambda h: is_to_be_rescheduled(h) and h.get_parent_deadline(), all_items), key=lambda h: (date_to_datetime(h.get_parent_deadline()), agenda_sorting_key(h))))
@@ -45,8 +55,11 @@ def reschedule_items(all_items):
     non_urgent_items = list(filter(lambda h: is_to_be_rescheduled(h) and not h.get_parent_deadline(), all_items))
     do_reschedule(non_urgent_items, available_capacity)
 
-def can_be_rescheduled_to(item, date):
-    return (set(item.get_all_tags()) & allowed_tags_for_weekdays[date.weekday()]) and item.active_date.date() != date
+def can_be_rescheduled_to(item, target_date):
+    active_date = item.active_date.date()
+    return (set(item.get_all_tags()) & allowed_tags_for_weekdays[target_date.weekday()]) \
+        and active_date != target_date \
+        and (target_date != date.today() or active_date < target_date)
 
 def do_reschedule(items, available_capacity):
     for date, capacity in available_capacity:
@@ -73,6 +86,9 @@ def do_reschedule(items, available_capacity):
     for item in items:
         echom('Could not find a slot for an item: ' + item.title)
 
+def is_not_available_for_scheduling(datetime):
+    return datetime < date.today() or list(filter(lambda holiday: holiday[0] <= datetime <= holiday[1], holidays))
+
 def compute_available_capacity(fixed_items, min_active_date, get_date_func):
     available_capacity = []
     for item in fixed_items:
@@ -80,7 +96,7 @@ def compute_available_capacity(fixed_items, min_active_date, get_date_func):
         if item_date <= min_active_date: continue
         while not available_capacity or available_capacity[-1][0] < item_date:
             new_date = available_capacity[-1][0] + timedelta(days=1) if available_capacity else item_date
-            capacity = [0] * len(max_capacity) if new_date < date.today() else list(max_capacity)
+            capacity = [0] * len(max_capacity) if is_not_available_for_scheduling(new_date) else list(max_capacity)
             available_capacity.append((new_date, capacity))
         capacity = available_capacity[-1][1]
         for tag in item.get_all_tags():

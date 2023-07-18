@@ -76,7 +76,7 @@ def is_repeated(heading):
 allowed_tags_for_rescheduling = {'p1', 'p2', 'p3'}
 
 def is_reschedulable(heading):
-    return (set(heading.tags) & allowed_tags_for_rescheduling) and not is_repeated(heading)
+    return (set(heading.get_all_tags()) & allowed_tags_for_rescheduling) and not is_repeated(heading)
 
 def contains_active_todo(heading):
     u"""
