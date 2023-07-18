@@ -597,6 +597,13 @@ class Heading(DomObj):
         if self._document:
             self._document.set_dirty_document()
 
+    def set_dirty_body(self):
+        u""" Mark the heading dirty so that it will be rewritten when saving the
+        document """
+        self._dirty_body = True
+        if self._document:
+            self._document.set_dirty_document()
+
     @property
     def previous_heading(self):
         u""" Serialized access to the previous heading """
@@ -729,7 +736,7 @@ class Heading(DomObj):
 class GeneratedHeading(Heading):
     def __init__(self, level=1, title=u'', tags=None, todo=None, body=None, active_date=None, deadline=None, derived_from=None):
         super().__init__(level, title, tags, todo, body, active_date, deadline)
-        self.derived_from = derived_from
+        self.derived_from = derived_from.derived_from if isinstance(derived_from, GeneratedHeading) else derived_from
 
     @property
     def document(self):

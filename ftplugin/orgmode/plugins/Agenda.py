@@ -6,7 +6,7 @@ import glob
 
 import vim
 
-from orgmode._vim import ORGMODE, get_bufnumber, get_bufname, echoe
+from orgmode._vim import ORGMODE, get_bufnumber, get_bufname, echoe, echom
 from orgmode import settings
 from orgmode.keybinding import Keybinding, Plug, Command
 from orgmode.menu import Submenu, ActionEntry, add_cmd_mapping_menu
@@ -122,6 +122,17 @@ class Agenda(object):
         vim.command(u_encode(u'setlocal nomodifiable'))
 
     @classmethod
+    def apply_rescheduling(cls):
+        for item in cls.line2doc.values():
+            new_date = get_rescheduled_date(item)
+            if not new_date: continue
+            item.derived_from.body = [s.replace(unicode(item.active_date), unicode(new_date)) for s in item.derived_from.body]
+            item.derived_from.set_dirty_body()
+            item.document.write_heading(item.derived_from)
+        vim.command(u_encode(u"quit"))
+        echom('Updated active dates')
+
+    @classmethod
     def opendoc(cls, split=False, switch=False):
         u"""
         If you are in the agenda view jump to the document the item in the
@@ -191,7 +202,8 @@ class Agenda(object):
         # create buffer at bottom
         cmd = [
             u'setlocal filetype=orgagenda',
-            u'nnoremap <silent> <buffer> L :exec "%s ORGMODE.plugins[u\'Agenda\'].toggle_rescheduling()"<CR>' % VIM_PY_CALL]
+            u'nnoremap <silent> <buffer> L :exec "%s ORGMODE.plugins[u\'Agenda\'].toggle_rescheduling()"<CR>' % VIM_PY_CALL,
+            u'nnoremap <silent> <buffer> A :exec "%s ORGMODE.plugins[u\'Agenda\'].apply_rescheduling()"<CR>' % VIM_PY_CALL ]
         cls._switch_to(u'AGENDA', cmd)
 
         cls.generate_agenda_buffer(raw_agenda)
