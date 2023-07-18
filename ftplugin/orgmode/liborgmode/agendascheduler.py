@@ -26,7 +26,10 @@ story_points = {
     'p1': (1, 1),
     'p2': (2, 2),
     'p3': (3, 3),
-    'mtg': (0, 1)
+    'mtg': (0, 1),
+    '1p': (1,),
+    '2p': (2,),
+    '3p': (3,)
 }
 
 holidays = [
@@ -34,9 +37,12 @@ holidays = [
     (date(2023, 8, 23), date(2023, 9, 3)),
 ]
 
-max_capacity = (7, 12)
+max_capacity = {
+    'rakuten': (7, 12),
+    'personal': (4,)
+}
 
-def reschedule_items(all_items):
+def reschedule_items(all_items, bufname):
     min_active_date = min(h.active_date.date() for h in all_items if get_rescheduled_date(h))
 
     def has_to_be_rescheduled(item):
@@ -49,12 +55,12 @@ def reschedule_items(all_items):
             are_urgent_items_selected and item.get_parent_deadline() and item.active_date.date() > min_active_date
             or has_to_be_rescheduled(item))
 
-    available_capacity = compute_available_capacity(filter(lambda h: not is_to_be_rescheduled(h), all_items), min_active_date, lambda h: h.active_date)
+    available_capacity = compute_available_capacity(filter(lambda h: not is_to_be_rescheduled(h), all_items), min_active_date, lambda h: h.active_date, max_capacity[bufname])
     urgent_items = list(sorted(filter(lambda h: is_to_be_rescheduled(h) and h.get_parent_deadline(), all_items), key=lambda h: (date_to_datetime(h.get_parent_deadline()), agenda_sorting_key(h))))
     do_reschedule(urgent_items, available_capacity)
     
     items_scheduled_so_far = filter(lambda h: not is_to_be_rescheduled(h) or h.get_parent_deadline(), all_items)
-    available_capacity = compute_available_capacity(sorted(items_scheduled_so_far, key=lambda h: date_to_datetime(get_new_date(h))), min_active_date, get_new_date)
+    available_capacity = compute_available_capacity(sorted(items_scheduled_so_far, key=lambda h: date_to_datetime(get_new_date(h))), min_active_date, get_new_date, max_capacity[bufname])
     non_urgent_items = list(filter(lambda h: is_to_be_rescheduled(h) and not h.get_parent_deadline(), all_items))
     do_reschedule(non_urgent_items, available_capacity)
 
@@ -92,7 +98,7 @@ def do_reschedule(items, available_capacity):
 def is_not_available_for_scheduling(datetime):
     return datetime < date.today() or list(filter(lambda holiday: holiday[0] <= datetime <= holiday[1], holidays))
 
-def compute_available_capacity(fixed_items, min_active_date, get_date_func):
+def compute_available_capacity(fixed_items, min_active_date, get_date_func, max_capacity):
     available_capacity = []
     for item in fixed_items:
         item_date = get_date_func(item).date().raw()

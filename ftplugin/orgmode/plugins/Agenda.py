@@ -115,7 +115,8 @@ class Agenda(object):
         row = vim.current.window.cursor[0]
         heading = cls.line2doc[row]
         toggle_rescheduling(heading)
-        reschedule_items(list(cls.line2doc.values()))
+        bufnr = heading.document.bufnr
+        reschedule_items(list(filter(lambda h: h.document.bufnr == bufnr, cls.line2doc.values())), cls.get_short_bufname(bufnr))
         vim.command(u_encode(u'setlocal modifiable'))
         for row, heading in cls.line2doc.items():
             vim.current.buffer[row - 1] = cls.format_agenda_item(heading)
@@ -264,8 +265,7 @@ class Agenda(object):
 
     @classmethod
     def format_agenda_item(cls, heading):
-        bufname = os.path.basename(vim.buffers[heading.document.bufnr].name)
-        bufname = bufname[:-4] if bufname.endswith(u'.org') else bufname
+        bufname = cls.get_short_bufname(heading.document.bufnr)
         rescheduled_date = get_rescheduled_date(heading)
         tags = heading.get_all_tags()
         deadline = heading.get_parent_deadline()
@@ -281,6 +281,11 @@ class Agenda(object):
             'title': heading.title,
             'opt': ' '.join(c for c in optional_columns if c)
         }
+    
+    @classmethod
+    def get_short_bufname(cls, bufnr):
+        bufname = os.path.basename(vim.buffers[bufnr].name)
+        return bufname[:-4] if bufname.endswith(u'.org') else bufname
 
     @classmethod
     def list_all_todos(cls, current_buffer=False):
