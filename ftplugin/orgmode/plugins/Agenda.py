@@ -19,7 +19,7 @@ from orgmode.liborgmode.orgdate import OrgDate
 
 from orgmode.liborgmode.agendascheduler import toggle_rescheduling
 from orgmode.liborgmode.agendascheduler import get_rescheduled_date
-from orgmode.liborgmode.agendascheduler import reschedule_items
+from orgmode.liborgmode.agendascheduler import AgendaScheduler
 
 class Agenda(object):
     u"""
@@ -116,7 +116,8 @@ class Agenda(object):
         heading = cls.line2doc[row]
         toggle_rescheduling(heading)
         bufnr = heading.document.bufnr
-        reschedule_items(list(filter(lambda h: h.document.bufnr == bufnr, cls.line2doc.values())), cls.get_short_bufname(bufnr))
+        rescheduler = AgendaScheduler(cls.get_short_bufname(bufnr))
+        rescheduler.reschedule_items(list(filter(lambda h: h.document.bufnr == bufnr, cls.line2doc.values())))
         vim.command(u_encode(u'setlocal modifiable'))
         for row, heading in cls.line2doc.items():
             vim.current.buffer[row - 1] = cls.format_agenda_item(heading)
