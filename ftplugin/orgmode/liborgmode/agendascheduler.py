@@ -48,11 +48,12 @@ def reschedule_items(all_items, bufname):
     def has_to_be_rescheduled(item):
         return get_rescheduled_date(item) or is_not_available_for_scheduling(item.active_date.date())
 
-    are_urgent_items_selected = len([h for h in all_items if has_to_be_rescheduled(h) and h.get_parent_deadline()]) != 0
+    urgent_item_dates_for_rescheduling = [h.active_date.date() for h in all_items if has_to_be_rescheduled(h) and h.get_parent_deadline()]
+    min_urgent_date = urgent_item_dates_for_rescheduling and min(urgent_item_dates_for_rescheduling)
 
     def is_to_be_rescheduled(item):
         return is_reschedulable(item) and (
-            are_urgent_items_selected and item.get_parent_deadline() and item.active_date.date() > min_active_date
+            urgent_item_dates_for_rescheduling and item.get_parent_deadline() and item.active_date.date() > min_urgent_date
             or has_to_be_rescheduled(item))
 
     available_capacity = compute_available_capacity(filter(lambda h: not is_to_be_rescheduled(h), all_items), min_active_date, lambda h: h.active_date, max_capacity[bufname])
@@ -65,35 +66,41 @@ def reschedule_items(all_items, bufname):
     do_reschedule(non_urgent_items, available_capacity)
 
 def can_be_rescheduled_to(item, target_date):
-    active_date = item.active_date.date()
+    active_date = item.active_date.date().raw()
     return (set(item.get_all_tags()) & allowed_tags_for_weekdays[target_date.weekday()]) \
         and (active_date != target_date or item.get_parent_deadline() and not get_rescheduled_date(item)) \
         and (target_date != date.today() or active_date < target_date)
 
+def get_better_solution(a, b):
+    for i, j in zip(a, b):
+        if i < j:
+            return a
+        elif i > j:
+            return b
+    return a if len(a) > len(b) else b
+
 def do_reschedule(items, available_capacity):
+    solution_for_prev_day = [[]] * (len(items) + 1)
+    item_story_points = [sum(max(story_points[t]) if t in story_points else 0 for t in h.get_all_tags()) for h in items]
     for date, capacity in available_capacity:
-        if not items: break
-        solution = [[]] + [None] * capacity
-        for i, h in filter(lambda h: can_be_rescheduled_to(h[1], date), enumerate(items)):
-            if solution[capacity]: break
-            item_story_points = sum(max(story_points[t]) if t in story_points else 0 for t in h.get_all_tags())
-            new_solution = solution[:]
-            for j, s in enumerate(solution[item_story_points:]):
-                if s: continue
-                if solution[j] is not None:
-                    new_solution[j + item_story_points] = solution[j] + [i]
-            solution = new_solution
-        for s in reversed(solution):
-            if s:
-                for i, j in enumerate(s):
-                    item = items[j - i]
-                    item.rescheduled_date = get_new_date(item).assign_new_date(date) if date != item.active_date.date().raw() else None
-                    if item.get_parent_deadline() and date_to_datetime(get_new_date(item)) > date_to_datetime(item.get_parent_deadline()):
-                        echom('Could not reschedule an item with fixed deadline: ' + item.title)
-                    del items[j - i]
-                break
-    for item in items:
-        echom('Could not find a slot for an item: ' + item.title)
+        if len([i for i in solution_for_prev_day if len(i) == len(items)]): break
+        solution = [solution_for_prev_day[:] for i in range(capacity + 1)]
+        best_solution = solution_for_prev_day
+        for i, h in enumerate(items):
+            if not can_be_rescheduled_to(h, date): continue
+            for j, s in enumerate(solution[item_story_points[i]:]):
+                candidate = solution[j][i] + [(i, date)]
+                s[i + 1] = get_better_solution(s[i + 1], candidate)
+                best_solution[i + 1] = get_better_solution(best_solution[i + 1], s[i + 1])
+        solution_for_prev_day = best_solution
+    best_solution = []
+    for s in solution_for_prev_day:
+        best_solution = get_better_solution(best_solution, s)
+    for i, date in best_solution:
+        item = items[i]
+        item.rescheduled_date = get_new_date(item).assign_new_date(date) if date != item.active_date.date().raw() else None
+        if item.get_parent_deadline() and date_to_datetime(get_new_date(item)) > date_to_datetime(item.get_parent_deadline()):
+            echom('Could not reschedule an item with fixed deadline: ' + item.title)
 
 def is_not_available_for_scheduling(datetime):
     return datetime < date.today() or list(filter(lambda holiday: holiday[0] <= datetime <= holiday[1], holidays))
