@@ -111,6 +111,10 @@ class AgendaScheduler:
                     continue
                 for i, sp in enumerate(self.config.story_points[tag]):
                     capacity[i] -= sp
+        for i in range(7):
+            new_date = available_capacity[-1][0] + timedelta(days=1)
+            capacity = [0] * len(max_capacity) if self.is_not_available_for_scheduling(new_date) else list(max_capacity)
+            available_capacity.append((new_date, capacity))
         return [(date, max(0, min(cap))) for date, cap in available_capacity]
 
 def get_new_date(h):
