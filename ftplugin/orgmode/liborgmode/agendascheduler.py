@@ -80,8 +80,11 @@ class AgendaScheduler:
             for i, h in enumerate(items):
                 if not self.can_be_rescheduled_to(h, date): continue
                 for j, s in enumerate(solution[item_story_points[i]:]):
-                    candidate = solution[j][i] + [(i, date)]
-                    s[i + 1] = get_better_solution(s[i + 1], candidate)
+                    items_from_last_solution = {p[0] for p in s[i + 1]}
+                    dates_from_last_solution = {p[1] for p in s[i + 1]}
+                    items_for_today = [p for p in solution[j][i] if p[1] not in dates_from_last_solution and p[0] not in items_from_last_solution]
+                    s[i + 1] = get_better_solution(s[i + 1], list(sorted(items_for_today + s[i + 1])))
+                    s[i + 1] = get_better_solution(s[i + 1], solution[j][i] + [(i, date)])
                     best_solution[i + 1] = get_better_solution(best_solution[i + 1], s[i + 1])
             solution_for_prev_day = best_solution
         best_solution = []
@@ -111,7 +114,7 @@ class AgendaScheduler:
                     continue
                 for i, sp in enumerate(self.config.story_points[tag]):
                     capacity[i] -= sp
-        for i in range(7):
+        for i in range(31):
             new_date = available_capacity[-1][0] + timedelta(days=1)
             capacity = [0] * len(max_capacity) if self.is_not_available_for_scheduling(new_date) else list(max_capacity)
             available_capacity.append((new_date, capacity))
