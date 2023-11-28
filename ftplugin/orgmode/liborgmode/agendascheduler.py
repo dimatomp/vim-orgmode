@@ -21,7 +21,7 @@ class SchedulingConfig:
 
 bufname_configs = {
     'rakuten': SchedulingConfig(
-        ({'rfb'}, {'indirect', 'learn'}, {'rfb'}, {'idlite'}, {'rfb'}, set(), set()),
+        ({'rfb'}, {'indirect', 'learn'}, {'rfb'}, {'idlite', 'indirect', 'learn'}, {'rfb'}, set(), set()),
         { 'p1': (1, 1), 'p2': (2, 2), 'p3': (3, 3), 'mtg': (0, 1)},
         (7, 12),
         [(date(2023, 8, 1), date(2023, 8, 16)), (date(2023, 8, 23), date(2023, 9, 3))]
@@ -68,36 +68,27 @@ class AgendaScheduler:
         allowed_tags = self.config.allowed_tags_for_weekdays[target_date.weekday()]
         return (allowed_tags is None or set(item.get_all_tags()) & allowed_tags) \
             and (active_date != target_date or item.get_parent_deadline() and not get_rescheduled_date(item)) \
-            and (target_date != date.today() or active_date < target_date)
+            and (target_date != date.today() or active_date < target_date) \
+            and (not item.get_parent_deadline() or item.get_parent_deadline().date().raw() >= target_date)
 
     def do_reschedule(self, items, available_capacity):
-        solution_for_prev_day = [[]] * (len(items) + 1)
-        item_story_points = [sum(max(self.config.story_points[t]) if t in self.config.story_points else 0 for t in h.get_all_tags()) for h in items]
-        for date, capacity in available_capacity:
-            if len([i for i in solution_for_prev_day if len(i) == len(items)]): break
-            solution = [solution_for_prev_day[:] for i in range(capacity + 1)]
-            best_solution = solution_for_prev_day
-            for i, h in enumerate(items):
-                if not self.can_be_rescheduled_to(h, date): continue
-                for j, s in enumerate(solution[item_story_points[i]:]):
-                    items_from_last_solution = {p[0] for p in s[i + 1]}
-                    dates_from_last_solution = {p[1] for p in s[i + 1]}
-                    items_for_today = [p for p in solution[j][i] if p[1] not in dates_from_last_solution and p[0] not in items_from_last_solution]
-                    s[i + 1] = get_better_solution(s[i + 1], list(sorted(items_for_today + s[i + 1])))
-                    s[i + 1] = get_better_solution(s[i + 1], solution[j][i] + [(i, date)])
-                    best_solution[i + 1] = get_better_solution(best_solution[i + 1], s[i + 1])
-            solution_for_prev_day = best_solution
-        best_solution = []
-        for s in solution_for_prev_day:
-            best_solution = get_better_solution(best_solution, s)
-        for i, date in best_solution:
-            item = items[i]
-            item.rescheduled_date = get_new_date(item).assign_new_date(date) if date != item.active_date.date().raw() else None
-            if item.get_parent_deadline() and date_to_datetime(get_new_date(item)) > date_to_datetime(item.get_parent_deadline()):
-                echom('Could not reschedule an item with fixed deadline: ' + item.title)
+        try:
+            from taskplanner import TaskPlanner
+            planner = TaskPlanner()
+            capacities = [capacity for _, capacity in available_capacity]
+            planner.addDays(*capacities)
+            for item in items:
+                story_points = sum(max(self.config.story_points[t]) if t in self.config.story_points else 0 for t in item.get_all_tags())
+                available_days = [i for i, (date, _) in enumerate(available_capacity) if self.can_be_rescheduled_to(item, date)]
+                planner.addTask(story_points, available_days)
+            solution = planner.planSchedule()
+            for item, dayIdx in zip(items, solution):
+                item.rescheduled_date = get_new_date(item).assign_new_date(available_capacity[dayIdx][0]) if dayIdx != -1 else None
+        except ImportError:
+            raise Exception("Please install task planning library from https://github.com/dimatomp/cpy-task-planner")
 
     def is_not_available_for_scheduling(self, datetime):
-        return datetime < date.today() or list(filter(lambda holiday: holiday[0] <= datetime <= holiday[1], self.config.holidays))
+        return datetime < date.today() or self.config.allowed_tags_for_weekdays[datetime.weekday()] == set() or list(filter(lambda holiday: holiday[0] <= datetime <= holiday[1], self.config.holidays))
 
     def compute_available_capacity(self, fixed_items, min_active_date, get_date_func, max_capacity):
         available_capacity = []
